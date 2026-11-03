@@ -14,18 +14,18 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: pip install pyinstaller openpyxl xlrd
-      - run: pyinstaller --noconsole --onefile --name vehicle-flow --collect-all openpyxl --hidden-import xlrd --clean --noconfirm webapp.py
+      - run: pyinstaller --noconsole --onefile --name vehicle-flow-windows --collect-all openpyxl --hidden-import xlrd --clean --noconfirm webapp.py
       - run: dir dist
         shell: cmd
       - uses: actions/upload-artifact@v4
         with:
           name: vehicle-flow-windows
-          path: dist/vehicle-flow.exe
+          path: dist/vehicle-flow-windows.exe
       - name: 发布 Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/vehicle-flow.exe
+          files: dist/vehicle-flow-windows.exe
   macos:
     runs-on: macos-latest
     steps:
