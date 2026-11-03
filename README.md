@@ -38,7 +38,7 @@ python3 vehicle_flow.py init
 
 # 入库 (新 VIN 本来就不在快照里，正常)
 python3 vehicle_flow.py intake \
-  --vin-file data/inbox/DF26PV-XXX_100.xls \
+  --vin-file data/inbox/batch_01.xls \
   --importer IMP001 --date 2026-11-03
 
 # 末销 (70 台，自动铺到当月工作日)
@@ -62,7 +62,7 @@ python3 vehicle_flow.py dashboard
 
 | VIN | 车型 | 进口商编码 | 进口商入库时间 | 经销商编码 | 经销商入库时间 | 末销时间 | 备注 |
 |-----|------|----------|------------|----------|------------|---------|------|
-| 17 位字母数字 | DMS 车型码 | IMP001 | 2026-11-03 | IMP001002 | 2026-11-03 | (末销时填) | DF26PV-XXX |
+| 17 位字母数字 | DMS 车型码 | IMP001 | 2026-11-03 | IMP001002 | 2026-11-03 | (末销时填) | PR26AB-001 |
 
 - 新 VIN：车型从 PL 文件名 + `config/models.json` 推断；备注列自动写入文件名里的项目号
 - 已在库存：直接沿用快照里的车型与状态

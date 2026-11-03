@@ -206,15 +206,15 @@ def load_models():
 
 def extract_project_name(path_or_str):
     """从 PL 文件名/项目号字符串提取项目标识。
-    例: 'PL Attachment DF26PV-208CR008-2 100UNITS.xls' -> 'DF26PV-208CR008-2'
-        'DF26PV-208CR008-2'                           -> 'DF26PV-208CR008-2'
+    例: 'PL Attachment PR26AB-101XY002 100UNITS.xls' -> 'PR26AB-101XY002'
+        'PR26AB-101XY002'                           -> 'PR26AB-101XY002'
     """
     s = os.path.basename(str(path_or_str)) if os.path.sep in str(path_or_str) else str(path_or_str)
     s = re.sub(r'\.[A-Za-z0-9]+$', '', s)          # 去掉扩展名
-    m = re.search(r'[A-Z]{2}\d{2}[A-Z]{2}[-\dA-Z]{4,}', s, re.I)   # DF26PV-208CR008-2
+    m = re.search(r'[A-Z]{2}\d{2}[A-Z]{2}[-\dA-Z]{4,}', s, re.I)   # 项目号: 2字母+2数字+2字母+连字符段
     if m:
         return m.group(0).upper()
-    m = re.search(r'DF[A-Z0-9\-]{8,}', s, re.I)
+    m = re.search(r'[A-Z]{2}[A-Z]{0,2}[-\dA-Z]{6,}', s, re.I)
     if m:
         return m.group(0).upper()
     # 最后兜底: 整串去掉 PL Attachment / 数量 等词
@@ -544,7 +544,7 @@ def cmd_intake(args):
     for p, code in load_models().items():
         prefix_map.setdefault(p, code)
 
-    # 从文件名提取项目号 (DF26PV-208CR008-2 这种), 统一写到备注列
+    # 从文件名提取项目号 (PR26AB-101XY002 这种), 统一写到备注列
     project = ''
     if args.vin_file:
         vfiles = args.vin_file if isinstance(args.vin_file, list) else [args.vin_file]

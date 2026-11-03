@@ -547,7 +547,7 @@ def api_intake(form):
     if not tag and files:
         base = os.path.basename(files[0])
         stem, _ = os.path.splitext(base)
-        # 常见前缀: PL Attachment / DF26PV-208 / 截短到 20 字符
+        # 常见前缀: PL Attachment / 批次标签 / 截短到 24 字符
         stem = stem.replace('PL Attachment ', '').replace('PL附件 ', '')
         tag = stem[:24] if stem else None
     args = Namespace(snapshot=(form.get('snapshot') or None) or None,
