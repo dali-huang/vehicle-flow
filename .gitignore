@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.pyc
+build/
+dist/
+.screenshots/
+.trae-html-share-packages/
+
+# 业务数据（含经销商与车辆信息，不入库）
+data/inbox/
+data/ledger/
+out/
+config/countries/*.json
+
+# 内部设计文档（含具体国家/编码/数据）
+末销录入系统_设计大纲.md
+allocate_cr.py

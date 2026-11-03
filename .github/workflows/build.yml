@@ -1,0 +1,37 @@
+name: 打包桌面应用
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install pyinstaller openpyxl xlrd
+      - run: pyinstaller --noconsole --onefile --name 车辆录入工具 --collect-all openpyxl --clean --noconfirm app_gui.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 车辆录入工具-exe
+          path: dist/车辆录入工具.exe
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install pyinstaller openpyxl xlrd
+      - run: pyinstaller --windowed --name 车辆录入工具 --collect-all openpyxl --hidden-import xlrd --clean --noconfirm webapp.py
+      - name: 打 dmg
+        run: |
+          mkdir -p /tmp/dmgstage
+          cp -R "dist/车辆录入工具.app" /tmp/dmgstage/
+          ln -s /Applications /tmp/dmgstage/Applications
+          hdiutil create -volname 车辆录入工具 -srcfolder /tmp/dmgstage -ov -format UDZO "dist/车辆录入工具_macOS.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 车辆录入工具-dmg
+          path: dist/车辆录入工具_macOS.dmg

@@ -1,0 +1,9 @@
+{
+  "window_months": 3,
+  "default": {
+    "target_ratio": 2.0,
+    "band": 0.3,
+    "min_keep_units": 1
+  },
+  "by_country": {}
+}

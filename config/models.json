@@ -1,0 +1,20 @@
+{
+  "note": "车型码 ↔ VIN 前缀映射。程序读 VIN 前 5-6 位做车型兜底。无匹配时从快照里统计推断。",
+  "brands": {},
+  "models": [
+    {"code": "C65", "name": "SHINE",         "prefixes": ["LDP43A", "LDP43S"]},
+    {"code": "C68", "name": "SHINE GS",      "prefixes": []},
+    {"code": "G35", "name": "SHINE MAX",     "prefixes": []},
+    {"code": "E70", "name": "E70",           "prefixes": []},
+    {"code": "X37", "name": "AX7",            "prefixes": ["LDP35"]},
+    {"code": "G59", "name": "HUGE",          "prefixes": ["LDP52"]},
+    {"code": "M57", "name": "MAGE",          "prefixes": ["LDP56"]},
+    {"code": "S01", "name": "MAGE EV",       "prefixes": ["LDP35B"]},
+    {"code": "P57", "name": "MAGE PHEV",     "prefixes": []},
+    {"code": "P59", "name": "HUGE PLUS",     "prefixes": []},
+    {"code": "S73", "name": "007",           "prefixes": []},
+    {"code": "S59", "name": "008",           "prefixes": []},
+    {"code": "S31", "name": "BOX / BOX PRO", "prefixes": ["LDP43A"]},
+    {"code": "S32", "name": "VIGO",          "prefixes": ["LDP45B", "LDP458"]}
+  ]
+}
