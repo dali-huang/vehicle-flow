@@ -475,7 +475,7 @@ def write_template(path, records):
 def check_file(path):
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb.active
-    header = [c.value for c in ws[1][:7]]
+    header = [c.value for c in ws[1][:len(HEADER)]]
     errors = []
     if header != HEADER:
         errors.append('表头不符: %s' % header)
@@ -849,6 +849,193 @@ def cmd_sale(args):
     return check_file(out_path)
 
 
+# ---------------------------------------------------------------- 真实末销表识别
+
+SALE_COLS = {
+    'vin': ('vin', '车架号', 'vin码', 'vin编码'),
+    'model': ('车型', '商品名称', '车型代号', '车型编码'),
+    'dealer': ('经销商编码', '经销商代码', '经销商', 'dms编码', '门店'),
+    'sold_at': ('末销时间', '末销日期', '出库日期', '销售日期'),
+    'qty': ('数量', '台数', 'qty'),
+}
+
+
+def _pick_col(header, keys):
+    cells = [str(c or '').strip().lower().replace(' ', '') for c in header]
+    for i, s in enumerate(cells):
+        for k in keys:
+            if k in s:
+                return i
+    return None
+
+
+def read_sale_file(path):
+    """读出真实末销表, 返回 (items, notes)。
+
+    items: [{'vin','model','dealer','sold_at','qty','row'}]
+    表头自适应: VIN/车架号, 车型/商品名称, 经销商/门店, 末销时间/出库日期, 数量
+    """
+    if path.lower().endswith('.csv'):
+        import csv
+        with open(path, encoding='utf-8-sig', newline='') as f:
+            rows = [list(r) for r in csv.reader(f)]
+    else:
+        rows = _sheet_rows(path)
+    hi, cols = None, {}
+    for i, row in enumerate(rows[:15]):
+        c = {k: _pick_col(row, v) for k, v in SALE_COLS.items()}
+        if c['vin'] is not None or (c['dealer'] is not None and c['qty'] is not None):
+            hi, cols = i, c
+            break
+    if hi is None:
+        return [], ['未识别到表头（需要含 VIN 列，或 经销商 + 数量 列）']
+
+    items, notes = [], []
+    for n, row in enumerate(rows[hi + 1:], start=hi + 2):
+        if not row or all(not x for x in row):
+            continue
+
+        def cell(key):
+            j = cols.get(key)
+            return row[j] if j is not None and j < len(row) else None
+
+        vin = str(cell('vin') or '').strip().upper()
+        model = str(cell('model') or '').strip().upper()
+        dealer = str(cell('dealer') or '').strip()
+        sold_at = cell('sold_at')
+        qty = 1
+        try:
+            if cell('qty'):
+                qty = max(1, int(float(cell('qty'))))
+        except (TypeError, ValueError):
+            qty = 1
+
+        if vin and not VIN_RE.match(vin):
+            notes.append('第%d行 VIN 格式不合法，已跳过: %s' % (n, vin))
+            continue
+        if not vin and not (dealer and qty):
+            continue
+        items.append({'vin': vin, 'model': model, 'dealer': dealer,
+                      'sold_at': sold_at, 'qty': qty, 'row': n})
+    return items, notes
+
+
+def cmd_sale_file(args):
+    """按真实末销表识别出库: 逐条核对库存状态后输出标准导入文件。"""
+    snapshot = find_snapshot(args.snapshot)
+    rows = load_snapshot(snapshot)
+    items, notes = read_sale_file(args.file)
+    if not items:
+        sys.exit('末销表里没有可识别记录%s'
+                 % ('（%s）' % '；'.join(notes) if notes else ''))
+
+    by_vin = {r['vin']: r for r in rows}
+    stock = defaultdict(list)
+    for r in rows:
+        if state_of(r) == 'dealer':
+            stock[r['dealer']].append(r)
+
+    used = set()
+    recs = []
+    errs = []
+    default_day = parse_date(args.date) if args.date else dt.date.today()
+
+    # 第一轮: 带 VIN 的直接核对快照
+    for it in items:
+        vin = it['vin']
+        if not vin:
+            continue
+        r = by_vin.get(vin)
+        if not r:
+            errs.append('第%d行 VIN 不在库存快照: %s' % (it['row'], vin))
+            continue
+        st = state_of(r)
+        if st not in ('dealer', 'importer'):
+            errs.append('第%d行 VIN 当前状态「%s」，不能末销: %s'
+                        % (it['row'], STATE_LABEL[st], vin))
+            continue
+        if vin in used:
+            errs.append('第%d行 VIN 重复: %s' % (it['row'], vin))
+            continue
+        used.add(vin)
+        sold = parse_date(it['sold_at']) if it['sold_at'] else default_day
+        recs.append({
+            'vin': vin, 'model': r['model'], 'imp': r['imp'],
+            'imp_in': parse_date(r['imp_in']) if r['imp_in'] else parse_date(r['dealer_in']),
+            'dealer': r['dealer'], 'dealer_in': parse_date(r['dealer_in']),
+            'sold_at': sold, 'remark': it.get('remark') or '',
+        })
+
+    # 第二轮: 只给经销商+数量的, 从未占用在库车里 FIFO 取
+    for it in items:
+        if it['vin']:
+            continue
+        dealer, qty = it['dealer'], it['qty']
+        cand = [x for x in stock.get(dealer, []) if x['vin'] not in used]
+        if it['model']:
+            hit = [x for x in cand if x['model'] == it['model']]
+            cand = hit or cand
+        cand.sort(key=lambda r: (str(r['prod_date'] or r['created'] or ''), r['vin']))
+        if len(cand) < qty:
+            errs.append('第%d行 %s 库存不足: 需 %d 台，可用 %d 台'
+                        % (it['row'], dealer, qty, len(cand)))
+        take = cand[:qty]
+        sold = parse_date(it['sold_at']) if it['sold_at'] else default_day
+        for r in take:
+            used.add(r['vin'])
+            recs.append({
+                'vin': r['vin'], 'model': r['model'], 'imp': r['imp'],
+                'imp_in': parse_date(r['imp_in']) if r['imp_in'] else parse_date(r['dealer_in']),
+                'dealer': r['dealer'], 'dealer_in': parse_date(r['dealer_in']),
+                'sold_at': sold, 'remark': it.get('remark') or '',
+            })
+
+    for n in notes:
+        print('  提示:', n)
+    print('末销表 %s: 识别 %d 条, 成单 %d 台' % (os.path.basename(args.file),
+                                            len(items), len(recs)))
+    per = defaultdict(Counter)
+    for rec in recs:
+        per[rec['dealer']][rec['model']] += 1
+    for d in sorted(per):
+        print('  %-10s %3d 台  %s' % (d, sum(per[d].values()),
+                                  ' '.join('%s×%d' % (m, per[d][m]) for m in sorted(per[d]))))
+    if not recs:
+        sys.exit('没有可输出的记录')
+    if errs:
+        print('  有 %d 条未能成单:' % len(errs))
+        for e in errs[:20]:
+            print('   -', e)
+
+    if args.preview:
+        print('\n(预览模式，未写文件)')
+        return 0
+
+    month = (parse_date(min(r['sold_at'] for r in recs)).strftime('%Y-%m'))
+    tag = args.tag or month.replace('-', '')
+    imp = Counter(r['imp'] for r in recs).most_common(1)[0][0]
+    cfg = load_config(imp, rows)
+    out_path = args.out or os.path.join(
+        OUT_DIR, month, '%s_末销识别_%s.xlsx' % (cfg['country'], tag))
+    write_template(out_path, recs)
+
+    p = os.path.join(LEDGER_DIR, '%s_sales.json' % imp)
+    data = {'importer': imp, 'records': []}
+    if os.path.exists(p):
+        with open(p, encoding='utf-8') as f:
+            data = json.load(f)
+    data['records'].extend({'vin': r['vin'], 'dealer': r['dealer'],
+                            'sold_at': r['sold_at'].isoformat(), 'batch': tag}
+                           for r in recs)
+    os.makedirs(LEDGER_DIR, exist_ok=True)
+    with open(p, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print('\n已生成: %s' % out_path)
+    return check_file(out_path)
+
+
+
 def main():
     p = argparse.ArgumentParser(description='车辆入库/末销录入工具')
     p.add_argument('--snapshot', help='库存快照路径 (默认取 data/inbox 最新)')
@@ -880,6 +1067,15 @@ def main():
     q.add_argument('--out', help='输出路径')
     q.add_argument('--preview', action='store_true')
     q.set_defaults(func=cmd_sale)
+
+    q = sub.add_parser('sale-file', help='按真实末销表识别出库, 输出标准导入文件')
+    q.add_argument('--file', required=True, help='真实末销表 (xlsx/xls/csv)')
+    q.add_argument('--snapshot')
+    q.add_argument('--date', help='表里没有末销日期时用的默认日期, 默认今天')
+    q.add_argument('--tag', help='批次标识, 默认月份')
+    q.add_argument('--out', help='输出路径')
+    q.add_argument('--preview', action='store_true')
+    q.set_defaults(func=cmd_sale_file)
 
     q = sub.add_parser('dashboard', help='区域末销/存销比看板 (HTML)')
     q.add_argument('--snapshot')

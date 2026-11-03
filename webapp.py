@@ -201,6 +201,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
 <nav>
   <button class="on" data-t="intake">入库</button>
   <button data-t="sale">末销</button>
+  <button data-t="salefile">末销识别</button>
   <button data-t="dash">看板</button>
   <button data-t="check">校验</button>
 </nav></header>
@@ -251,6 +252,24 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
     <div class="row" style="margin-top:18px">
       <button class="btn" onclick="doSale(true)">预览方案</button>
       <button class="btn pri" onclick="doSale(false)">生成末销 Excel</button>
+    </div>
+  </section>
+
+  <section id="p-salefile" class="card hidden">
+    <h2>末销识别（按真实末销表）</h2>
+    <div class="sub">上传门店实际末销/出库明细，逐条核对库存状态后输出标准 DMS 导入文件。</div>
+    <label>末销表文件（xlsx / xls / csv）</label>
+    <div class="row">
+      <input type="file" id="salefile" accept=".xlsx,.xls,.csv" multiple>
+    </div>
+    <div class="hint">表头自动识别：VIN / 车架号、车型 / 商品名称、经销商编码 / 门店、末销时间 / 出库日期、数量。<br>
+      带 VIN 的行直接按快照核对状态；只给「经销商 + 数量」的行自动从该店在库车里 FIFO 取。<br>
+      日期留空则用下面这个默认日期。两个末销入口互相独立，不影响对方。</div>
+    <label>默认末销日期（表里没日期时用）</label>
+    <input type="text" id="sfdate" placeholder="2026-11-03" style="width:150px">
+    <div class="row" style="margin-top:18px">
+      <button class="btn" onclick="doSaleFile(true)">预览识别结果</button>
+      <button class="btn pri" onclick="doSaleFile(false)">生成末销 Excel</button>
     </div>
   </section>
 
@@ -362,6 +381,16 @@ async function doSale(preview){
   await post('/api/sale', {importer:$('#imp').value, month:$('#month').value,
     mode, count:$('#count').value, preview, snapshot:snapshotArg()});
 }
+async function doSaleFile(preview){
+  const fd = new FormData();
+  const files = $('#salefile').files;
+  if(!files.length){ alert('请选择真实末销表'); return; }
+  for(const f of files) fd.append('salefile', f);
+  fd.append('date', $('#sfdate').value);
+  fd.append('snapshot', snapshotArg() || '');
+  fd.append('preview', preview ? '1' : '0');
+  await post('/api/sale-file', fd, true);
+}
 async function doDash(){
   await post('/api/dashboard', {month:$('#dmonth').value, snapshot:snapshotArg()});
 }
@@ -374,7 +403,7 @@ document.querySelectorAll('nav button').forEach(b=>{
   b.onclick = () => {
     document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
-    ['intake','sale','dash','check'].forEach(t=>
+    ['intake','sale','salefile','dash','check'].forEach(t=>
       $('#p-'+t).classList.toggle('hidden', t !== b.dataset.t));
   };
 });
@@ -468,6 +497,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, api_upload_snapshot(body))
         if u.path == '/api/sale':
             return self._send(200, api_sale(body))
+        if u.path == '/api/sale-file':
+            return self._send(200, api_sale_file(body))
         if u.path == '/api/dashboard':
             return self._send(200, api_dashboard(body))
         if u.path == '/api/check':
@@ -574,6 +605,19 @@ def api_sale(b):
                      carflow=None, date=None, tag=None, out=None,
                      preview=bool(b.get('preview')))
     ok, log = run_capture(VF.cmd_sale, args)
+    return {'ok': ok, 'log': log, 'files': rel_files(sorted(out_files() - before))}
+
+
+def api_sale_file(form):
+    from argparse import Namespace
+    files = _save_upload(form, 'salefile')
+    if not files:
+        return {'ok': False, 'log': '没有收到末销表文件', 'files': []}
+    before = out_files()
+    args = Namespace(file=files[0], snapshot=(form.get('snapshot') or None) or None,
+                     date=(form.get('date') or '').strip() or None,
+                     tag=None, out=None, preview=form.get('preview') == '1')
+    ok, log = run_capture(VF.cmd_sale_file, args)
     return {'ok': ok, 'log': log, 'files': rel_files(sorted(out_files() - before))}
 
 
