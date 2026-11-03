@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: pip install pyinstaller openpyxl xlrd
-      - run: pyinstaller --noconsole --onefile --name 车辆录入工具 --collect-all openpyxl --clean --noconfirm app_gui.py
+      - run: pyinstaller --noconsole --onefile --name 车辆录入工具 --collect-all openpyxl --hidden-import xlrd --clean --noconfirm webapp.py
       - uses: actions/upload-artifact@v4
         with:
           name: 车辆录入工具-exe
