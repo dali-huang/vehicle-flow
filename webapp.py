@@ -201,7 +201,6 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
 <nav>
   <button class="on" data-t="intake">入库</button>
   <button data-t="sale">末销</button>
-  <button data-t="salefile">末销识别</button>
   <button data-t="dash">看板</button>
   <button data-t="check">校验</button>
 </nav></header>
@@ -234,51 +233,56 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
   </section>
 
   <section id="p-sale" class="card hidden">
-    <h2>月度末销</h2>
-    <div class="sub">先对比 carflow 目标 / 系统建议 / 可执行上限，再按店分配、FIFO 出库。</div>
+    <h2>末销</h2>
+    <div class="sub">两种方式任选其一：按目标生成录入，或上传门店真实末销表识别出库。</div>
+
     <label>进口商 / 国家</label>
     <select id="imp"></select>
-    <label>统计月（留空自动取末销数据最新月）</label>
-    <input type="text" id="month" placeholder="2026-11" style="width:150px">
-    <label>末销量来源</label>
-    <div class="radios">
-      <label><input type="radio" name="mode" value="count" checked onclick="syncMode()">
-        我报量 <input type="text" id="count" style="width:80px;margin-left:4px"></label>
-      <label><input type="radio" name="mode" value="carflow" onclick="syncMode()"> 按 carflow 当月目标</label>
-      <label><input type="radio" name="mode" value="suggest" onclick="syncMode()"> 按系统建议量</label>
-    </div>
-    <div class="hint">超过可执行上限会自动封顶，不会清空任何门店；每店至少保留 1 台。<br>
-      末销日期自动均匀铺到当月工作日（周末除外），避免日销峰谷。</div>
-    <div class="row" style="margin-top:18px">
-      <button class="btn" onclick="doSale(true)">预览方案</button>
-      <button class="btn pri" onclick="doSale(false)">生成末销 Excel</button>
-    </div>
-  </section>
 
-  <section id="p-salefile" class="card hidden">
-    <h2>末销识别（按真实末销表）</h2>
-    <div class="sub">上传门店实际末销/出库明细，逐条核对库存状态后输出标准 DMS 导入文件。</div>
-    <label>末销表文件（xlsx / xls / csv）</label>
-    <div class="row">
-      <input type="file" id="salefile" accept=".xlsx,.xls,.csv" multiple>
+    <label>方式</label>
+    <div class="radios">
+      <label><input type="radio" name="smode" value="gen" checked onclick="syncSaleMode()"> 按目标生成</label>
+      <label><input type="radio" name="smode" value="real" onclick="syncSaleMode()"> 上传真实末销表识别</label>
     </div>
-    <div class="hint">表头自动识别：VIN / 车架号、车型 / 商品名称、经销商编码 / 门店、末销时间 / 出库日期、数量。<br>
-      带 VIN 的行直接按快照核对状态；只给「经销商 + 数量」的行自动从该店在库车里 FIFO 取。<br>
-      日期留空则用下面这个默认日期。两个末销入口互相独立，不影响对方。</div>
-    <label>默认末销日期（表里没日期时用）</label>
-    <input type="text" id="sfdate" placeholder="2026-11-03" style="width:150px">
-    <div class="row" style="margin-top:18px">
-      <button class="btn" onclick="doSaleFile(true)">预览识别结果</button>
-      <button class="btn pri" onclick="doSaleFile(false)">生成末销 Excel</button>
+
+    <div id="sale-gen">
+      <label>统计月</label>
+      <select id="month"></select>
+      <label>末销量来源</label>
+      <div class="radios">
+        <label><input type="radio" name="mode" value="count" checked onclick="syncMode()">
+          我报量 <input type="text" id="count" style="width:80px;margin-left:4px"></label>
+        <label><input type="radio" name="mode" value="carflow" onclick="syncMode()"> 按 carflow 当月目标</label>
+        <label><input type="radio" name="mode" value="suggest" onclick="syncMode()"> 按系统建议量</label>
+      </div>
+      <div class="hint">超过可执行上限会自动封顶，不会清空任何门店；每店至少保留 1 台。<br>
+        末销日期自动均匀铺到当月工作日（周末除外），避免日销峰谷。</div>
+      <div class="row" style="margin-top:18px">
+        <button class="btn" onclick="doSale(true)">预览方案</button>
+        <button class="btn pri" onclick="doSale(false)">生成末销 Excel</button>
+      </div>
+    </div>
+
+    <div id="sale-real" class="hidden">
+      <label>末销表文件（xlsx / xls / csv，可多选）</label>
+      <input type="file" id="salefile" accept=".xlsx,.xls,.csv" multiple>
+      <div class="hint">表头自动识别：VIN / 车架号、车型 / 商品名称、经销商编码 / 门店、末销时间 / 出库日期、数量。<br>
+        带 VIN 的行直接按快照核对状态；只给「经销商 + 数量」的行自动从该店在库车里 FIFO 取。</div>
+      <label>默认末销日期（表里没日期时用）</label>
+      <input type="date" id="sfdate" style="width:170px">
+      <div class="row" style="margin-top:18px">
+        <button class="btn" onclick="doSaleFile(true)">预览识别结果</button>
+        <button class="btn pri" onclick="doSaleFile(false)">生成末销 Excel</button>
+      </div>
     </div>
   </section>
 
   <section id="p-dash" class="card hidden">
     <h2>区域看板</h2>
     <div class="sub">末销 / 存销比可视化，单文件 HTML，生成后可下载或直接打开。</div>
-    <label>统计月（留空自动）</label>
+    <label>统计月</label>
     <div class="row">
-      <input type="text" id="dmonth" placeholder="2026-10" style="width:150px">
+      <select id="dmonth"></select>
       <button class="btn pri" onclick="doDash()">生成看板</button>
     </div>
   </section>
@@ -326,10 +330,6 @@ async function loadState(){
   $('#ws').textContent = '工作目录：' + r.ws;
   const today = new Date().toISOString().slice(0,10);
   if(!$('#indate').value) $('#indate').value = today;
-}
-function syncMode(){
-  const m = document.querySelector('input[name=mode]:checked').value;
-  $('#count').disabled = m !== 'count';
 }
 function showFiles(files){
   $('#files').innerHTML = files.map(f=>{
@@ -399,15 +399,46 @@ async function doCheck(){
   await post('/api/check', {path:$('#chkfile').value});
 }
 
+function fillMonths(){
+  const now = new Date();
+  for(const id of ['month','dmonth']){
+    const sel = $('#'+id);
+    if(!sel || sel.options.length) continue;
+    let opts = '<option value="">自动（取末销数据最新月）</option>';
+    for(let i=-12;i<=3;i++){
+      const d = new Date(now.getFullYear(), now.getMonth()+i, 1);
+      const v = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      opts += '<option value="'+v+'">'+v+'</option>';
+    }
+    sel.innerHTML = opts;
+  }
+  const sf = $('#sfdate');
+  if(sf && !sf.value){
+    const d = now;
+    sf.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+}
+function syncSaleMode(){
+  const m = document.querySelector('input[name=smode]:checked').value;
+  $('#sale-gen').classList.toggle('hidden', m !== 'gen');
+  $('#sale-real').classList.toggle('hidden', m !== 'real');
+}
+function syncMode(){
+  $('#count').disabled = document.querySelector('input[name=mode]:checked').value !== 'count';
+}
+
 document.querySelectorAll('nav button').forEach(b=>{
   b.onclick = () => {
     document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
-    ['intake','sale','salefile','dash','check'].forEach(t=>
+    ['intake','sale','dash','check'].forEach(t=>
       $('#p-'+t).classList.toggle('hidden', t !== b.dataset.t));
   };
 });
 
+fillMonths();
+syncSaleMode();
+syncMode();
 setInterval(()=>fetch('/api/ping').catch(()=>{}), 5000);
 loadState();
 </script>
