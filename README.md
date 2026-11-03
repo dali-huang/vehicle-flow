@@ -29,8 +29,8 @@ VIN 清单 (txt/csv/xlsx/xls)         # 入库用；PL 文件名里的项目号�
 
 | 平台 | 安装包 | 下载链接 |
 |------|--------|----------|
-| macOS | `车辆录入工具_macOS.dmg` | [点此下载](https://github.com/dali-huang/vehicle-flow/releases/latest/download/%E8%BD%A6%E8%BE%86%E5%BD%95%E5%85%A5%E5%B7%A5%E5%85%B7_macOS.dmg) |
-| Windows | `车辆录入工具.exe` | [点此下载](https://github.com/dali-huang/vehicle-flow/releases/latest/download/%E8%BD%A6%E8%BE%86%E5%BD%95%E5%85%A5%E5%B7%A5%E5%85%B7.exe) |
+| macOS | `vehicle-flow-macos.dmg` | [点此下载](https://github.com/dali-huang/vehicle-flow/releases/latest/download/vehicle-flow-macos.dmg) |
+| Windows | `vehicle-flow-windows.exe` | [点此下载](https://github.com/dali-huang/vehicle-flow/releases/latest/download/vehicle-flow-windows.exe) |
 
 也可以直接打开 [Releases 页面](https://github.com/dali-huang/vehicle-flow/releases) 选最新版本。
 
