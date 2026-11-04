@@ -29,6 +29,8 @@ jobs:
         with: { python-version: '3.11' }
       - run: pip install pyinstaller openpyxl xlrd
       - run: pyinstaller --windowed --name vehicle-flow --icon assets/icon.icns --collect-all openpyxl --hidden-import xlrd --clean --noconfirm webapp.py
+      - name: ad-hoc 签名 (绕过未公证的"恶意软件"拦截)
+        run: codesign --force --deep --sign - dist/vehicle-flow.app
       - run: ls -R dist
       - name: 打 dmg
         run: |

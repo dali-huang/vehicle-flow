@@ -34,10 +34,21 @@ VIN 清单 (txt/csv/xlsx/xls)         # 入库用；PL 文件名里的项目号�
 
 也可以直接打开 [Releases 页面](https://github.com/dali-huang/vehicle-flow/releases) 选最新版本。
 
-- **macOS**：dmg 挂载后把 app 拖进 Applications；首次打开需右键 →「打开」绕过签名提示
-- **Windows**：双击 exe；首次运行如遇 SmartScreen，点「更多信息」→「仍要运行」
-
 程序启动后会自动打开 `http://127.0.0.1:8787`（关闭 30 秒后自动退出，不常驻）。
+
+**macOS 首次打开：弹"Apple 无法验证是否包含恶意软件"是正常的**（未做 Apple 公证的第三方 app 都会被 Gatekeeper 拦一次）。打开方法：
+
+- 方式一（推荐）：在「访达 → 应用程序」里找到 `vehicle-flow`，**右键 → 打开**，弹窗里再点「打开」
+- 方式二：打开「系统设置 → 隐私与安全性」，拉到底点「仍要打开」
+- 方式三（一次性解除拦截）：终端运行
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/vehicle-flow.app
+  ```
+  然后正常双击即可
+
+**Windows 首次运行**：如遇 SmartScreen 提示，点「更多信息」→「仍要运行」。
+
+> 说明：本程序是本地运行的离线工具，不联网、不上传数据。若需要彻底免拦截，可用 Apple Developer ID（$99/年）做正式签名+公证；目前为免费 ad-hoc 签名版本。
 
 ### 3. 命令行方式
 
