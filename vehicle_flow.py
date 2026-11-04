@@ -75,40 +75,133 @@ def find_snapshot(path=None):
     sys.exit('未找到库存快照：请先在网页「库存快照」处上传平台导出的车辆台账（.xlsx / .xls）')
 
 
+def _norm_header(h):
+    """列名归一化: 去空白/标点/全半角括号斜杠, 转小写, 便于跨模板匹配。"""
+    return re.sub(r'[\s_\-（）()【】\[\]：:、，,\/\\]+', '', str(h or '')).lower()
+
+
+# 逻辑字段 -> 可能的列名别名(按优先级). 不绑定单一平台模板, 支持各平台导出的台账.
+FIELD_ALIASES = {
+    'vin':         ['VIN', 'VIN码', '车架号', '车架号码', '车辆识别代号', '车辆识别代码', 'Vin'],
+    'model':       ['车型', '车型编码', '车型代码', '车型名称', '产品型号', '产品编码', 'model'],
+    'imp':         ['进口商编码', '进口商代码', '进口商编号', '进口商ID', '进口商代', '进口商'],
+    'imp_name':    ['进口商名称', '进口商名字'],
+    'dealer':      ['经销商编码', '经销商代码', '经销商编号', '经销商ID', '经销商代', '经销商', '网点编码'],
+    'dealer_name': ['经销商名称', '经销商名字', '网点名称', '网点'],
+    'status':      ['运营状态', '经营状态', '状态'],
+    'imp_in':      ['进口商入库时间', '进口商入库日期', '进口商入库', '入库时间', '入库日期'],
+    'dealer_in':   ['经销商入库时间', '经销商入库日期', '经销商入库', '分店时间', '到店时间', '到店日期'],
+    'sold_at':     ['末销时间', '末销日期', '销售时间', '销售日期', '出库时间', '出库日期', '已末销时间'],
+    'transit':     ['在途', '是否在途', '在途状态'],
+    'imp_done':    ['进口商已入库', '进口商入库完成', '进口商是否入库'],
+    'dealer_done': ['经销商已入库', '经销商入库完成', '经销商是否入库', '是否到店'],
+    'sold_done':   ['已末销出库', '已末销', '是否末销', '末销出库', '末销完成'],
+    'country':     ['国家/地区名称', '国家地区', '国家名称', '国家', '地区名称', '地区'],
+    'created':     ['创建时间', '创建日期', '录入时间', '录入日期'],
+    'prod_date':   ['生产日期', '出厂日期', '生产时间', '出厂时间'],
+    'age':         ['车龄（月）', '车龄(月)', '车龄', '库存天数', '库龄', '库龄（天）'],
+}
+
+
+def match_columns(header):
+    """把表头映射到逻辑字段: 精确匹配优先, 其次包含匹配; 每列只归一个字段."""
+    scored = []
+    for ci, h in enumerate(header):
+        nh = _norm_header(h)
+        if not nh:
+            continue
+        for field, aliases in FIELD_ALIASES.items():
+            for j, a in enumerate(aliases):
+                na = _norm_header(a)
+                if not na:
+                    continue
+                if nh == na:
+                    scored.append((2, -j, field, ci))
+                elif na in nh:
+                    scored.append((1, -j, field, ci))
+    scored.sort(reverse=True)
+    used_h, used_f, result = set(), set(), {}
+    for score, _negj, field, ci in scored:
+        if ci in used_h or field in used_f:
+            continue
+        result[field] = ci
+        used_h.add(ci)
+        used_f.add(field)
+    return result
+
+
+_VIN_RE = re.compile(r'^[A-Z0-9]{17}$')
+
+
+def _detect_vin_column(ws):
+    """表头没匹配到 VIN 时, 按内容(17位字母数字)兜底识别 VIN 列."""
+    counts = defaultdict(int)
+    n = 0
+    for r in ws.iter_rows(min_row=2, max_row=60, values_only=True):
+        n += 1
+        for i, v in enumerate(r):
+            if v and _VIN_RE.match(str(v).strip().upper()):
+                counts[i] += 1
+    if counts and n:
+        best = max(counts, key=counts.get)
+        if counts[best] >= max(1, n // 4):
+            return best
+    return None
+
+
+def _g(r, i):
+    """安全取单元格: 列缺失或越界返回 None."""
+    return r[i] if i is not None and i < len(r) else None
+
+
+def snapshot_field_headers(path):
+    """返回 {逻辑字段: 实际列名}, 供界面日志展示识别结果."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb.active
+    header = list(next(ws.iter_rows(max_row=1, values_only=True)))
+    wb.close()
+    col = match_columns(header)
+    return {f: str(header[i]) for f, i in col.items() if i < len(header)}
+
+
 def load_snapshot(path, data_only=True):
     wb = openpyxl.load_workbook(path, read_only=True, data_only=data_only)
     ws = wb.active
     header = list(next(ws.iter_rows(max_row=1, values_only=True)))
-    idx = {h: i for i, h in enumerate(header) if h}
-    missing = [h for h in ('VIN', '车型', '进口商编码', '经销商编码',
-                           '运营状态', '经销商入库时间', '末销时间', '在途') if h not in idx]
-    if missing:
-        sys.exit('快照缺列: %s' % missing)
+    col = match_columns(header)
+    if 'vin' not in col:
+        vi = _detect_vin_column(ws)
+        if vi is not None:
+            col['vin'] = vi
+    if 'vin' not in col:
+        wb.close()
+        sys.exit('快照里没找到 VIN 列（应为 17 位字母数字），请确认上传的是车辆台账')
 
     rows = []
     for r in ws.iter_rows(min_row=2, values_only=True):
-        if not r[idx['VIN']]:
+        v = _g(r, col.get('vin'))
+        if not v:
             continue
-        vin = str(r[idx['VIN']]).strip()
+        vin = str(v).strip()
         rows.append({
             'vin': vin,
-            'model': str(r[idx['车型']] or '').strip(),
-            'imp': str(r[idx['进口商编码']] or '').strip(),
-            'imp_name': str(r[idx['进口商名称']] or '').strip(),
-            'dealer': str(r[idx['经销商编码']] or '').strip(),
-            'dealer_name': str(r[idx['经销商名称']] or '').strip(),
-            'status': str(r[idx['运营状态']] or '').strip(),
-            'imp_in': r[idx['进口商入库时间']],
-            'dealer_in': r[idx['经销商入库时间']],
-            'sold_at': r[idx['末销时间']],
-            'transit': str(r[idx['在途']] or '').strip(),
-            'imp_done': str(r[idx['进口商已入库']] or '').strip(),
-            'dealer_done': str(r[idx['经销商已入库']] or '').strip(),
-            'sold_done': str(r[idx['已末销出库']] or '').strip(),
-            'country': str(r[idx['国家/地区名称']] or '').strip(),
-            'created': r[idx['创建时间']],
-            'prod_date': r[idx['生产日期']] if '生产日期' in idx else None,
-            'age': r[idx['车龄（月）']] if '车龄（月）' in idx else None,
+            'model': str(_g(r, col.get('model')) or '').strip(),
+            'imp': str(_g(r, col.get('imp')) or '').strip(),
+            'imp_name': str(_g(r, col.get('imp_name')) or '').strip(),
+            'dealer': str(_g(r, col.get('dealer')) or '').strip(),
+            'dealer_name': str(_g(r, col.get('dealer_name')) or '').strip(),
+            'status': str(_g(r, col.get('status')) or '').strip(),
+            'imp_in': _g(r, col.get('imp_in')),
+            'dealer_in': _g(r, col.get('dealer_in')),
+            'sold_at': _g(r, col.get('sold_at')),
+            'transit': str(_g(r, col.get('transit')) or '').strip(),
+            'imp_done': str(_g(r, col.get('imp_done')) or '').strip(),
+            'dealer_done': str(_g(r, col.get('dealer_done')) or '').strip(),
+            'sold_done': str(_g(r, col.get('sold_done')) or '').strip(),
+            'country': str(_g(r, col.get('country')) or '').strip(),
+            'created': _g(r, col.get('created')),
+            'prod_date': _g(r, col.get('prod_date')),
+            'age': _g(r, col.get('age')),
         })
     wb.close()
     return rows

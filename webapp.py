@@ -185,7 +185,9 @@ textarea{resize:vertical;min-height:96px;font-family:Menlo,Consolas,monospace;fo
   background:#ecfdf3;color:#15803d;margin-left:8px}
 .tag.no{background:#fef2f2;color:#b91c1c}
 .hidden{display:none}
-.snaprow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px}
+.snapnote{background:#f0f6ff;border:1px solid #dbe7fb;border-radius:8px;padding:8px 12px;margin:14px 0 8px;font-size:12.5px;color:#334155;line-height:1.6}
+.snapnote b{color:#0f172a}
+.snaprow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 4px}
 .snaprow .lbl{font-size:13px;color:var(--sub);white-space:nowrap}
 .snaprow select{flex:1;min-width:240px}
 .snaprow .hint{font-size:12px;color:var(--sub);width:100%;margin-top:2px}
@@ -197,6 +199,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
 <header><div class="wrap">
   <h1>区域车辆录入工具</h1>
   <div class="sub">入库 · 末销 · 看板 · 校验　—　一个本地工具，数据不外传</div>
+  <div class="snapnote">ℹ️ 先上传平台导出的车辆台账 Excel 作为<b>库存快照</b>，后续入库、末销、看板均基于此快照生成。支持各平台模板，自动识别 VIN / 进口商 / 经销商等列。</div>
   <div class="snaprow">
     <span class="lbl">库存快照</span>
     <select id="snap" onchange="setSnap(this.value)"></select>
@@ -651,6 +654,19 @@ def api_upload_snapshot(form):
     # 扫描快照，为每个进口商生成主数据（进口商/国家/经销商下拉从此有值）
     try:
         rows = VF.load_snapshot(p)
+        # 展示识别到的列: 跨平台模板时让使用者知道哪些列被认出、哪些没认到
+        try:
+            fh = VF.snapshot_field_headers(p)
+            order = ['vin', 'imp', 'imp_name', 'dealer', 'dealer_name', 'model',
+                     'status', 'sold_at', 'dealer_in', 'imp_in', 'transit',
+                     'sold_done', 'dealer_done', 'imp_done', 'country']
+            parts = ['%s→%s' % (k, fh[k]) for k in order if k in fh]
+            log.append('识别到 %d 列：%s' % (len(fh), '，'.join(parts)))
+            missing = [k for k in ('imp', 'dealer', 'sold_at', 'transit') if k not in fh]
+            if missing:
+                log.append('⚠ 未识别到列：%s（看板/末销可能不完整，可检查列名）' % '、'.join(missing))
+        except Exception:
+            pass
         imps = sorted({r['imp'] for r in rows if r['imp']})
         ok_imps = []
         for imp in imps:
