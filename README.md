@@ -1,7 +1,7 @@
 # 区域车辆录入工具 vehicle-flow
 
 面向**汽车经销商 / 进口商**的「入库 / 末销 / 看板」三件套。一个 Python 脚本 + 一个本地网页界面，
-输入库存快照 / VIN 清单 / 月度目标，输出 **标准 DMS 可导入 Excel** 和离线 HTML 看板。
+输入库存末销数据盘点 / VIN 清单 / 月度目标，输出 **标准 DMS 可导入 Excel** 和离线 HTML 看板。
 
 - 自动分店（按网点权重水位法，每店保底留 1 台）
 - 末销日期均匀铺到当月工作日（避免日销峰谷）
@@ -159,7 +159,7 @@ vehicle-flow/
 │   ├─ models.json            # 车型 ↔ VIN 前缀
 │   └─ targets.json           # 存销比目标 (window_months / default / by_country)
 ├─ data/
-│   ├─ inbox/                 # 库存快照 / VIN 清单 / 月度目标
+│   ├─ inbox/                 # 库存末销数据盘点 / VIN 清单 / 月度目标
 │   └─ ledger/*.json          # 本地台账（防重复）
 ├─ out/
 │   ├─ 末销日期/              # 入库 Excel

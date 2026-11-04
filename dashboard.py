@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """区域末销 / 存销比看板 (P0)
 
-输入: 平台库存快照 + carflow + 经销商主数据 + config/targets.json
+输入: 平台库存末销数据盘点 + carflow + 经销商主数据 + config/targets.json
 输出: 单文件 HTML (内嵌数据, 自绘图表, 离线可开)
 
 口径:
@@ -287,6 +287,7 @@ def build_data(snapshot, carflow_path, month, targets):
             'target': r_star, 'band': band, 'state': state, 'advice': advice,
             'gap_units': round(gap), 'target_mtd': target_mtd,
             'window_detail': window_detail,
+            'months_map': dict(c['months']),
             'last_sold': c['last_sold'].isoformat() if c['last_sold'] else None,
             'achieve': round(c['sold_mtd'] / target_mtd * 100, 1) if target_mtd else None,
             'coverage': coverage,
@@ -400,6 +401,9 @@ def build_data(snapshot, carflow_path, month, targets):
         warnings.append('carflow 有末销目标、但快照无库存数据的国家共 %d 个（%s 等），详见页脚' %
                         (len(missing), '、'.join(sorted(missing)[:3])))
 
+    all_months = sorted({m for c in countries.values() for m in c['months']} | {month},
+                        reverse=True)
+
     return {
         'meta': {
             'generated': dt.datetime.now().strftime('%Y-%m-%d %H:%M'),
@@ -410,6 +414,7 @@ def build_data(snapshot, carflow_path, month, targets):
         'totals': tot, 'countries': out_countries,
         'dealers': out_dealers, 'models': out_models[:12],
         'trend': trend, 'missing': sorted(missing), 'warnings': warnings,
+        'all_months': all_months, 'carflow_flow': flow,
     }
 
 
@@ -476,6 +481,11 @@ svg{width:100%;height:auto}
 <div class="wrap">
   <h1>区域末销 / 存销比看板</h1>
   <div class="meta" id="meta"></div>
+  <div style="margin:8px 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <label style="font-size:13px;color:var(--sub)">统计月</label>
+    <select id="monthPick" style="padding:5px 8px;border:1px solid #d6dde6;border-radius:6px;font-size:13px;background:#fff"></select>
+    <span class="small">切换后按所选月份重算近 N 月均值与存销比；在库 / 在途为快照当前值</span>
+  </div>
   <div id="warn"></div>
 
   <div class="grid kpis" id="kpis"></div>
@@ -522,10 +532,59 @@ const $ = s => document.querySelector(s);
 const nf = v => v==null ? '—' : v.toLocaleString('zh-CN');
 const rf = v => v==null ? '—' : v.toFixed(2);
 const pill = (st,txt) => `<span class="pill ${st}">${txt}</span>`;
+let V = {month: DATA.meta.month, windows: DATA.meta.windows.slice(), countries: DATA.countries};
+const N = DATA.meta.window_months;
+function addMonthsYM(ym,n){ const [y,m]=ym.split('-').map(Number); const d=new Date(y,m-1+n,1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+// 镜像服务端 avg_of + 国家存销比口径, 保证默认月与生成时一致, 切月时前端重算
+function calcCountry(c, month){
+  const mm = c.months_map || {};
+  const windows = [];
+  for(let i=N;i>0;i--) windows.push(addMonthsYM(month,-i));
+  const vals = windows.map(m=>mm[m]||0);
+  let a=0, a_src='无';
+  if(vals.reduce((s,v)=>s+v,0) > 0){
+    const cands = Object.keys(mm).filter(m=>mm[m]>0 && m <= windows[windows.length-1]);
+    const first = cands.length ? Math.min(...cands) : null;
+    const used = first ? windows.filter(m=>m>=first) : windows.slice();
+    a = used.reduce((s,m)=>s+(mm[m]||0),0)/used.length; a_src='近'+used.length+'月';
+  } else {
+    const hs = addMonthsYM(month,-12);
+    const hist = Object.keys(mm).filter(m=>m>=hs && m<month).map(m=>mm[m]||0);
+    if(hist.length && hist.reduce((s,v)=>s+v,0)>0){ a=hist.reduce((s,v)=>s+v,0)/hist.length; a_src='历史均值'; }
+  }
+  const flow = DATA.carflow_flow || {};
+  const target_mtd = (flow[c.name] && flow[c.name][month]) || 0;
+  if(a===0 && target_mtd){ a=target_mtd; a_src='carflow目标'; }
+  const r_star=c.target, band=c.band, in_stock=c.in_stock, in_transit=c.in_transit;
+  const r_stock = a ? in_stock/a : null;
+  const r_transit = a ? in_transit/a : null;
+  const r_total = a ? (in_stock+in_transit)/a : null;
+  let state, advice, gap=0;
+  if(r_total==null){ state='na'; advice='无销量基准，先补历史'; }
+  else if(r_total > r_star+band){ state='high'; gap=(r_total-r_star)*a; advice='偏高，本月建议多出 '+Math.round(gap)+' 台或暂缓入库'; }
+  else if(r_total < r_star-band){ state='low'; gap=(r_star-r_total)*a; advice='偏低，建议补 '+Math.round(gap)+' 台或在途尽快分店'; }
+  else { state='ok'; advice='健康，按计划进货与末销'; }
+  const year=month.slice(0,4);
+  const sold_ytd = Object.keys(mm).filter(m=>m.slice(0,4)===year && m<=month).reduce((s,m)=>s+mm[m],0);
+  const sold_mtd = mm[month]||0;
+  return {avg:+a.toFixed(1), avg_src: a_src,
+    ratio_stock:r_stock==null?null:+r_stock.toFixed(2),
+    ratio_transit:r_transit==null?null:+r_transit.toFixed(2),
+    ratio_total:r_total==null?null:+r_total.toFixed(2),
+    state, advice, gap_units:Math.round(gap),
+    sold_ytd, sold_mtd, window_detail:windows.map(m=>({m,v:mm[m]||0})), target_mtd};
+}
+function renderAll(selMonth, recompute){
+  V.month = selMonth;
+  V.windows = []; for(let i=N;i>0;i--) V.windows.push(addMonthsYM(selMonth,-i));
+  V.countries = recompute ? DATA.countries.map(c=>Object.assign({}, c, calcCountry(c, selMonth))) : DATA.countries;
+  meta(); kpis(); countries(); ratioTable(); foot();
+}
 
 function meta(){
   const m = DATA.meta;
-  $('#meta').innerHTML = `数据截止 ${m.cutoff} · 统计月 ${m.month} · 月均窗口 ${m.windows.join(' / ')} · 来源 ${m.snapshot} · 生成 ${m.generated}`;
+  $('#meta').innerHTML = `数据截止 ${m.cutoff} · 统计月 ${V.month} · 月均窗口 ${V.windows.join(' / ')} · 来源 ${m.snapshot} · 生成 ${m.generated}`;
 }
 function warn(){
   const list = DATA.warnings || [];
@@ -534,14 +593,18 @@ function warn(){
     list.map(t=>`<br>· ${t}`).join('') + `</div>`;
 }
 function kpis(){
-  const t = DATA.totals;
+  const cs = V.countries, t = DATA.totals;
+  const ytd = cs.reduce((s,c)=>s+(c.sold_ytd||0),0);
+  const mtd = cs.reduce((s,c)=>s+(c.sold_mtd||0),0);
+  const avgs = cs.reduce((s,c)=>s+(c.avg||0),0);
+  const ratio = avgs ? +((t.in_stock+t.in_transit)/avgs).toFixed(2) : null;
   const items = [
-    ['累计末销', nf(t.sold_ytd), '台 · '+DATA.meta.month.slice(0,4)+' 年至今'],
-    ['本月末销', nf(t.sold_mtd), '台 · '+DATA.meta.month],
+    ['累计末销', nf(ytd), '台 · '+V.month.slice(0,4)+' 年至今'],
+    ['本月末销', nf(mtd), '台 · '+V.month],
     ['在库', nf(t.in_stock), '台（含进口商库存）'],
     ['在途', nf(t.in_transit), '台'],
-    ['合计存销比', rf(t.ratio), '总库存 / 月均 '+nf(t.avg)+' 台'],
-    ['在营国家 / 车型', DATA.countries.length+' / '+t.models, '个 / 款'],
+    ['合计存销比', rf(ratio), '总库存 / 月均 '+nf(avgs)+' 台'],
+    ['在营国家 / 车型', cs.length+' / '+t.models, '个 / 款'],
   ];
   $('#kpis').innerHTML = items.map(([k,v,s])=>`<div class="card kpi"><div class="k">${k}</div>
     <div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
@@ -552,8 +615,8 @@ function bar(v,max,color){
     <span class="lbl">${nf(v)}</span></div>`;
 }
 function countries(){
-  const max = Math.max(...DATA.countries.map(c=>Math.max(c.sold_ytd,c.in_stock,c.in_transit)),1);
-  $('#countries').innerHTML = DATA.countries.map(c=>`
+  const max = Math.max(...V.countries.map(c=>Math.max(c.sold_ytd,c.in_stock,c.in_transit)),1);
+  $('#countries').innerHTML = V.countries.map(c=>`
     <div class="row">
       <div><div class="nm">${c.name}</div><div class="sub">${c.code} · 覆盖 ${c.coverage}</div></div>
       <div class="bars">
@@ -563,7 +626,7 @@ function countries(){
         ${pill(c.state, c.ratio_total==null?'无基准':'存销比 '+rf(c.ratio_total)+' / 目标 '+c.target)}
         <div class="sub" style="margin-top:4px">在库 ${rf(c.ratio_stock)} · 在途 ${rf(c.ratio_transit)}</div>
         <div class="sub">${c.advice}</div>
-        <div class="sub">近 ${DATA.meta.window_months} 月：${(c.window_detail||[]).map(d=>d.m.slice(5)+'月 '+d.v).join(' / ')}</div>
+        <div class="sub">近 ${N} 月：${(c.window_detail||[]).map(d=>d.m.slice(5)+'月 '+d.v).join(' / ')}</div>
       </div>
     </div>`).join('');
 }
@@ -609,10 +672,10 @@ function dealerRows(){
   $('#dealerTbl').innerHTML = html;
 }
 function ratioTable(){
-  const head = `<tr><th class="l">国家</th><th class="l">近 ${DATA.meta.window_months} 月末销（月/台）</th>
+  const head = `<tr><th class="l">国家</th><th class="l">近 ${N} 月末销（月/台）</th>
     <th>在库</th><th>在库比</th><th>在途</th><th>在途比</th>
     <th>合计</th><th>合计比</th><th>目标</th><th>Δ</th><th class="l">建议</th></tr>`;
-  const rows = DATA.countries.map(c=>{
+  const rows = V.countries.map(c=>{
     const delta = c.ratio_total==null ? null : (c.ratio_total - c.target);
     const wd = (c.window_detail||[]).map(d=>`${d.m.slice(5)}月 <b>${d.v}</b>`).join(' · ');
     return `<tr><td class="l"><b>${c.name}</b><div class="small">均值 ${c.avg} 台/月（${c.avg_src}）
@@ -628,15 +691,19 @@ function ratioTable(){
 function foot(){
   const m = DATA.meta;
   $('#foot').innerHTML = `口径：累计末销按平台末销时间统计；在库含经销商已入库与进口商已入库；在途为在途=是。<br>
-    存销比分母为近 ${m.window_months} 个完整月（${m.windows.join('、')}）的月均末销；无销量时回退 carflow 当月末销目标。<br>
+    存销比分母为近 ${m.window_months} 个完整月（${V.windows.join('、')}）的月均末销；无销量时回退 carflow 当月末销目标。<br>
     carflow 中有目标但快照暂无库存数据的国家：${DATA.missing.length?DATA.missing.join('、'):'无'}。`;
 }
 (function init(){
-  meta();warn();kpis();countries();models();trend();
+  const mp = $('#monthPick');
+  mp.innerHTML = (DATA.all_months||[]).map(m=>`<option value="${m}" ${m===DATA.meta.month?'selected':''}>${m}</option>`).join('');
+  mp.onchange = ()=>renderAll(mp.value, true);
+  renderAll(DATA.meta.month, false);
+  warn();models();trend();
   const sel = $('#cfilter');
   sel.innerHTML = `<option value="">全部国家</option>` + DATA.countries.map(c=>`<option>${c.name}</option>`).join('');
   sel.onchange = dealerRows;
-  dealerRows();ratioTable();foot();
+  dealerRows();
 })();
 </script>
 </body>

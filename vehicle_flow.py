@@ -2,7 +2,7 @@
 """车辆入库 / 末销录入工具 v0.2
 
 数据基准:
-  平台库存快照 (data/inbox/车辆库存_*.xlsx, 31 列)
+  平台库存末销数据盘点 (data/inbox/*.xlsx, 任意文件名; 按 VIN/进口商/经销商等列语义自动识别, 不限模板)
   经销商主数据 (config/countries/<进口商>.json, 首次运行自动从快照生成)
   本地台账     (data/ledger/<进口商>_ledger.json, 记录已提交过的 VIN)
 
@@ -72,7 +72,7 @@ def find_snapshot(path=None):
                    glob.glob(os.path.join(INBOX, '*.xls')), key=os.path.getmtime)
     if files:
         return files[-1]
-    sys.exit('未找到库存快照：请先在网页「库存快照」处上传平台导出的车辆台账（.xlsx / .xls）')
+    sys.exit('未找到库存末销数据盘点：请先在网页「库存末销数据盘点」处上传平台导出的车辆台账（.xlsx / .xls）')
 
 
 def _norm_header(h):
@@ -855,7 +855,7 @@ def cmd_sale(args):
     elif s_star is not None:
         want = s_star
     if not want or want <= 0:
-        sys.exit('请用 --count 报量, 或 --source carflow 按目标, 否则按系统建议量(当前为 0)')
+        sys.exit('请用 --count 报量，否则按系统建议量（当前为 0，请检查库存与月均是否正常）')
     if want > feasible:
         print('  报量 %d 超出可执行上限, 已封顶为 %d 台' % (want, feasible))
         want = feasible
@@ -1065,7 +1065,7 @@ def cmd_sale_file(args):
             continue
         r = by_vin.get(vin)
         if not r:
-            errs.append('第%d行 VIN 不在库存快照: %s' % (it['row'], vin))
+            errs.append('第%d行 VIN 不在库存末销数据盘点: %s' % (it['row'], vin))
             continue
         st = state_of(r)
         if st not in ('dealer', 'importer'):
@@ -1156,7 +1156,7 @@ def cmd_sale_file(args):
 
 def main():
     p = argparse.ArgumentParser(description='车辆入库/末销录入工具')
-    p.add_argument('--snapshot', help='库存快照路径 (默认取 data/inbox 最新)')
+    p.add_argument('--snapshot', help='库存末销数据盘点路径 (默认取 data/inbox 最新)')
     sub = p.add_subparsers(dest='cmd', required=True)
 
     q = sub.add_parser('init', help='生成/查看经销商主数据')

@@ -39,7 +39,7 @@ def workspace_dir():
 
 
 def bootstrap(dst):
-    """首次启动: 若本机已有项目目录，把库存快照与配置复制过来。"""
+    """首次启动: 若本机已有项目目录，把库存末销数据盘点与配置复制过来。"""
     import shutil
     if os.path.isdir(os.path.join(dst, 'data', 'inbox')):
         return
@@ -199,9 +199,9 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
 <header><div class="wrap">
   <h1>区域车辆录入工具</h1>
   <div class="sub">入库 · 末销 · 看板 · 校验　—　一个本地工具，数据不外传</div>
-  <div class="snapnote">ℹ️ 先上传平台导出的车辆台账 Excel 作为<b>库存快照</b>，后续入库、末销、看板均基于此快照生成。支持各平台模板，自动识别 VIN / 进口商 / 经销商等列。</div>
+  <div class="snapnote">ℹ️ 先上传平台导出的车辆台账 Excel 作为<b>库存末销数据盘点</b>，后续入库、末销、看板均基于此快照生成。支持各平台模板，自动识别 VIN / 进口商 / 经销商等列。</div>
   <div class="snaprow">
-    <span class="lbl">库存快照</span>
+    <span class="lbl">库存末销数据盘点</span>
     <select id="snap" onchange="setSnap(this.value)"></select>
     <button class="btn" onclick="document.getElementById('snapfile').click()">上传快照</button>
     <button class="btn" onclick="loadState()">刷新</button>
@@ -222,7 +222,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
     <div class="sub">传入新 VIN，按各店现有库存与网点数自动分配，直接落到「经销商已入库」。</div>
     <div class="hint" style="background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;
       padding:10px 12px;margin:12px 0 0">
-      库存快照 = 平台导出的当前车辆台账（在库 / 在途 / 已末销），用来算每家店现在有多少库存、
+      库存末销数据盘点 = 平台导出的当前车辆台账（在库 / 在途 / 已末销），用来算每家店现在有多少库存、
       按网点权重把新车分下去。<b>新 VIN 本来就不在快照里</b>，不需要能查到。
     </div>
     <label>进口商 / 国家</label>
@@ -263,7 +263,6 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
       <div class="radios">
         <label><input type="radio" name="mode" value="count" checked onclick="syncMode()">
           我报量 <input type="text" id="count" style="width:80px;margin-left:4px"></label>
-        <label><input type="radio" name="mode" value="carflow" onclick="syncMode()"> 按 carflow 当月目标</label>
         <label><input type="radio" name="mode" value="suggest" onclick="syncMode()"> 按系统建议量</label>
       </div>
       <div class="hint">超过可执行上限会自动封顶，不会清空任何门店；每店至少保留 1 台。<br>
@@ -338,7 +337,7 @@ async function loadState(){
   const r = await fetch('/api/state').then(x=>x.json());
   STATE = r;
   $('#snap').innerHTML = r.snapshots.map(s=>`<option value="${s}" ${s===r.snapshot?'selected':''}>${s}</option>`).join('')
-    || '<option value="">请先上传库存快照（平台导出的车辆台账 .xlsx/.xls）</option>';
+    || '<option value="">请先上传库存末销数据盘点（平台导出的车辆台账 .xlsx/.xls）</option>';
   $('#imp').innerHTML = r.importers.map(i=>`<option value="${i.code}">${i.code}　${i.name}</option>`).join('');
   $('#inimp').innerHTML = r.importers.map(i=>`<option value="${i.code}">${i.code}　${i.name}</option>`).join('');
   $('#chkfile').innerHTML = r.outputs.map(o=>`<option value="${o.path}">${o.rel}</option>`).join('');
@@ -370,7 +369,7 @@ async function uploadSnap(inp){
   if(!inp.files.length) return;
   const fd = new FormData();
   fd.append('snapshot', inp.files[0]);
-  log('\n> 上传库存快照\n');
+  log('\n> 上传库存末销数据盘点\n');
   const r = await fetch('/api/upload_snapshot', {method:'POST', body:fd}).then(x=>x.json());
   log(r.log || '', r.ok ? 'g' : 'r');
   mark(r.ok);
@@ -727,7 +726,7 @@ def api_sale(b):
     mode = b.get('mode') or 'count'
     count = (b.get('count') or '').strip() if mode == 'count' else None
     if mode == 'count' and not count:
-        return {'ok': False, 'log': '请填写报量台数，或改选 carflow / 系统建议', 'files': []}
+        return {'ok': False, 'log': '请填写报量台数，或改选系统建议量', 'files': []}
     before = out_files()
     args = Namespace(snapshot=b.get('snapshot') or None,
                      importer=b.get('importer'),
