@@ -185,12 +185,10 @@ textarea{resize:vertical;min-height:96px;font-family:Menlo,Consolas,monospace;fo
   background:#ecfdf3;color:#15803d;margin-left:8px}
 .tag.no{background:#fef2f2;color:#b91c1c}
 .hidden{display:none}
-.stepbar{background:linear-gradient(135deg,#eef4ff,#f5f9ff);border:1px solid #dbe7fb;border-left:4px solid var(--acc);
-  border-radius:12px;padding:16px 18px;margin:16px 0 6px}
-.step1 .step-t{font-size:16px;font-weight:700;color:#0f172a;margin-bottom:4px}
-.step1 .step-t .req{color:#dc2626;font-size:13px;margin-left:4px}
-.step1 .step-s{color:#334155;font-size:13px;margin-bottom:10px;line-height:1.6}
-.step1 .step-r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.snaprow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px}
+.snaprow .lbl{font-size:13px;color:var(--sub);white-space:nowrap}
+.snaprow select{flex:1;min-width:240px}
+.snaprow .hint{font-size:12px;color:var(--sub);width:100%;margin-top:2px}
 .dashresult{margin-top:16px;padding:16px;border:1px dashed #c7d7f5;border-radius:10px;background:#f8fbff}
 .dashresult .big{font-size:15px;font-weight:600;margin-bottom:8px;color:#0f172a}
 footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
@@ -199,16 +197,12 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
 <header><div class="wrap">
   <h1>区域车辆录入工具</h1>
   <div class="sub">入库 · 末销 · 看板 · 校验　—　一个本地工具，数据不外传</div>
-  <div class="stepbar">
-    <div class="step1">
-      <div class="step-t">① 第一步 · 上传库存快照<span class="req">（必做）</span></div>
-      <div class="step-s">平台导出的当前车辆台账（在库 / 在途 / 已末销），入库、末销、看板都依赖它。<b>新 VIN 不在快照里是正常的</b>，不用查得到。</div>
-      <div class="step-r">
-        <select id="snap" onchange="setSnap(this.value)" style="flex:1;min-width:280px"></select>
-        <button class="btn" onclick="document.getElementById('snapfile').click()">📁 上传快照</button>
-        <button class="btn" onclick="loadState()">刷新</button>
-      </div>
-    </div>
+  <div class="snaprow">
+    <span class="lbl">库存快照</span>
+    <select id="snap" onchange="setSnap(this.value)"></select>
+    <button class="btn" onclick="document.getElementById('snapfile').click()">上传快照</button>
+    <button class="btn" onclick="loadState()">刷新</button>
+    <span class="hint">平台导出的车辆台账（.xlsx / .xls），新 VIN 不在快照里属正常</span>
   </div>
   <input type="file" id="snapfile" accept=".xlsx,.xls" style="display:none" onchange="uploadSnap(this)">
 </div>

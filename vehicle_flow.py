@@ -146,13 +146,19 @@ def config_path(importer):
     return os.path.join(CONFIG_DIR, '%s.json' % importer)
 
 
+def _top_value(values, default=''):
+    """取出现次数最多的非空值; 全部为空时返回 default, 避免 [0] 越界。"""
+    c = Counter(v for v in values if v)
+    return c.most_common(1)[0][0] if c else default
+
+
 def build_config(rows, importer):
     """从快照生成经销商主数据; 之后由人工维护(失效/新增/网点数)。"""
     sub = [r for r in rows if r['imp'] == importer]
     if not sub:
         sys.exit('快照里没有进口商 %s' % importer)
 
-    country = Counter(r['country'] for r in sub if r['country']).most_common(1)[0][0]
+    country = _top_value((r['country'] for r in sub), '')
     dealers = {}
     for r in sub:
         code = r['dealer']
@@ -185,7 +191,7 @@ def build_config(rows, importer):
 
     cfg = {
         'importer': importer,
-        'importer_name': Counter(r['imp_name'] for r in sub if r['imp_name']).most_common(1)[0][0],
+        'importer_name': _top_value((r['imp_name'] for r in sub), importer),
         'country': country,
         'dealers': sorted(dealers.values(), key=lambda d: d['code']),
         'rule': {'weight': 'outlets', 'keep_months': 2.5, 'min_keep_units': 1},

@@ -133,7 +133,11 @@ def build_data(snapshot, carflow_path, month, targets):
     status = {}
     cfgs = {}
     for imp in sorted({r['imp'] for r in rows if r['imp']}):
-        cfgs[imp] = load_config(imp, rows)
+        try:
+            cfgs[imp] = load_config(imp, rows)
+        except Exception as e:
+            print('⚠ 进口商 %s 主数据加载失败，已跳过（不影响其余进口商）：%s' % (imp, e))
+            continue
         for d in cfgs[imp]['dealers']:
             status[(imp, d['code'])] = d
     # 补齐未在主数据里的经销商
