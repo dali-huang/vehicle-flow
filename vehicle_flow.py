@@ -47,13 +47,32 @@ STATE_LABEL = {'transit': '在途', 'importer': '进口商已入库',
 
 # ---------------------------------------------------------------- 基础
 
+def current_snapshot_file():
+    return os.path.join(BASE, 'data', '.current_snapshot')
+
+
 def find_snapshot(path=None):
     if path:
+        if os.path.exists(path):
+            return path
+        # 传入路径不存在时仍交给后续, 让 load_snapshot 报明确错误
         return path
-    files = sorted(glob.glob(os.path.join(INBOX, '车辆库存*.xlsx')))
-    if not files:
-        sys.exit('未找到库存快照: data/inbox/车辆库存_*.xlsx')
-    return files[-1]
+    # 1) 界面记录的「当前快照」
+    cp = current_snapshot_file()
+    if os.path.exists(cp):
+        try:
+            with open(cp, encoding='utf-8') as f:
+                p = f.read().strip()
+            if p and os.path.exists(p):
+                return p
+        except Exception:
+            pass
+    # 2) inbox 里最新的 xlsx / xls (不限文件名前缀)
+    files = sorted(glob.glob(os.path.join(INBOX, '*.xlsx')) +
+                   glob.glob(os.path.join(INBOX, '*.xls')), key=os.path.getmtime)
+    if files:
+        return files[-1]
+    sys.exit('未找到库存快照：请先在网页「库存快照」处上传平台导出的车辆台账（.xlsx / .xls）')
 
 
 def load_snapshot(path, data_only=True):

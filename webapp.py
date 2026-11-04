@@ -12,6 +12,7 @@ import datetime as dt
 import io
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -184,19 +185,32 @@ textarea{resize:vertical;min-height:96px;font-family:Menlo,Consolas,monospace;fo
   background:#ecfdf3;color:#15803d;margin-left:8px}
 .tag.no{background:#fef2f2;color:#b91c1c}
 .hidden{display:none}
+.stepbar{background:linear-gradient(135deg,#eef4ff,#f5f9ff);border:1px solid #dbe7fb;border-left:4px solid var(--acc);
+  border-radius:12px;padding:16px 18px;margin:16px 0 6px}
+.step1 .step-t{font-size:16px;font-weight:700;color:#0f172a;margin-bottom:4px}
+.step1 .step-t .req{color:#dc2626;font-size:13px;margin-left:4px}
+.step1 .step-s{color:#334155;font-size:13px;margin-bottom:10px;line-height:1.6}
+.step1 .step-r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dashresult{margin-top:16px;padding:16px;border:1px dashed #c7d7f5;border-radius:10px;background:#f8fbff}
+.dashresult .big{font-size:15px;font-weight:600;margin-bottom:8px;color:#0f172a}
 footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
 </style></head>
 <body>
 <header><div class="wrap">
   <h1>区域车辆录入工具</h1>
   <div class="sub">入库 · 末销 · 看板 · 校验　—　一个本地工具，数据不外传</div>
-  <div class="snap">
-    <span class="sub">库存快照</span>
-    <select id="snap"></select>
-    <button class="btn" onclick="document.getElementById('snapfile').click()">上传快照</button>
-    <button class="btn" onclick="loadState()">刷新</button>
+  <div class="stepbar">
+    <div class="step1">
+      <div class="step-t">① 第一步 · 上传库存快照<span class="req">（必做）</span></div>
+      <div class="step-s">平台导出的当前车辆台账（在库 / 在途 / 已末销），入库、末销、看板都依赖它。<b>新 VIN 不在快照里是正常的</b>，不用查得到。</div>
+      <div class="step-r">
+        <select id="snap" onchange="setSnap(this.value)" style="flex:1;min-width:280px"></select>
+        <button class="btn" onclick="document.getElementById('snapfile').click()">📁 上传快照</button>
+        <button class="btn" onclick="loadState()">刷新</button>
+      </div>
+    </div>
   </div>
-  <input type="file" id="snapfile" accept=".xlsx" style="display:none" onchange="uploadSnap(this)">
+  <input type="file" id="snapfile" accept=".xlsx,.xls" style="display:none" onchange="uploadSnap(this)">
 </div>
 <nav>
   <button class="on" data-t="intake">入库</button>
@@ -285,6 +299,10 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
       <select id="dmonth"></select>
       <button class="btn pri" onclick="doDash()">生成看板</button>
     </div>
+    <div id="dashresult" class="dashresult hidden">
+      <div class="big">✅ 看板已生成</div>
+      <div id="dashlinks"></div>
+    </div>
   </section>
 
   <section id="p-check" class="card hidden">
@@ -322,8 +340,8 @@ function mark(ok){ const t=$('#stat'); t.className='tag'+(ok?'':' no');
 async function loadState(){
   const r = await fetch('/api/state').then(x=>x.json());
   STATE = r;
-  $('#snap').innerHTML = r.snapshots.map(s=>`<option ${s===r.snapshot?'selected':''}>${s}</option>`).join('')
-    || '<option value="">未找到 车辆库存*.xlsx</option>';
+  $('#snap').innerHTML = r.snapshots.map(s=>`<option value="${s}" ${s===r.snapshot?'selected':''}>${s}</option>`).join('')
+    || '<option value="">请先上传库存快照（平台导出的车辆台账 .xlsx/.xls）</option>';
   $('#imp').innerHTML = r.importers.map(i=>`<option value="${i.code}">${i.code}　${i.name}</option>`).join('');
   $('#inimp').innerHTML = r.importers.map(i=>`<option value="${i.code}">${i.code}　${i.name}</option>`).join('');
   $('#chkfile').innerHTML = r.outputs.map(o=>`<option value="${o.path}">${o.rel}</option>`).join('');
@@ -391,8 +409,26 @@ async function doSaleFile(preview){
   fd.append('preview', preview ? '1' : '0');
   await post('/api/sale-file', fd, true);
 }
+async function setSnap(v){
+  fetch('/api/set_snapshot', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({path:v})}).then(x=>x.json()).then(r=>{
+      if(r.log){log('\n'+r.log+'\n', r.ok?'g':'r');}
+    }).catch(()=>{});
+}
 async function doDash(){
-  await post('/api/dashboard', {month:$('#dmonth').value, snapshot:snapshotArg()});
+  const r = await post('/api/dashboard', {month:$('#dmonth').value, snapshot:snapshotArg()});
+  const box = $('#dashresult'), links = $('#dashlinks');
+  if(r.ok && r.files && r.files.length){
+    links.innerHTML = r.files.map(f=>{
+      const open = `/view?p=${encodeURIComponent(f.path)}`;
+      const dl = `/download?p=${encodeURIComponent(f.path)}`;
+      return `<a href="${open}" target="_blank" class="btn pri" style="text-decoration:none;margin-right:10px">📊 在浏览器打开看板</a>`
+           + `<a href="${dl}" class="btn" style="text-decoration:none">⬇ 下载 HTML</a>`;
+    }).join('');
+    box.classList.remove('hidden');
+  } else {
+    box.classList.add('hidden');
+  }
 }
 async function doCheck(){
   if(!$('#chkfile').value){ alert('输出目录里还没有可校验的 Excel'); return; }
@@ -526,6 +562,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, api_intake(body))
         if u.path == '/api/upload_snapshot':
             return self._send(200, api_upload_snapshot(body))
+        if u.path == '/api/set_snapshot':
+            return self._send(200, api_set_snapshot(body))
         if u.path == '/api/sale':
             return self._send(200, api_sale(body))
         if u.path == '/api/sale-file':
@@ -537,9 +575,26 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {'ok': False, 'log': 'not found'})
 
 
+def _current_snapshot():
+    cp = os.path.join(VF.BASE, 'data', '.current_snapshot')
+    if os.path.exists(cp):
+        try:
+            with open(cp, encoding='utf-8') as f:
+                p = f.read().strip()
+            if p and os.path.exists(p):
+                return p
+        except Exception:
+            pass
+    return ''
+
+
 def state():
     import glob
-    snaps = sorted(glob.glob(os.path.join(VF.INBOX, '车辆库存*.xlsx')))
+    snaps = sorted(glob.glob(os.path.join(VF.INBOX, '*.xlsx')) +
+                   glob.glob(os.path.join(VF.INBOX, '*.xls')), key=os.path.getmtime)
+    cur = _current_snapshot()
+    if cur and cur not in snaps:
+        snaps.append(cur)
     importers = []
     for p in sorted(glob.glob(os.path.join(VF.CONFIG_DIR, '*.json'))):
         try:
@@ -553,7 +608,7 @@ def state():
             importers.append({'code': code, 'name': code})
     return {
         'ws': WS,
-        'snapshot': snaps[-1] if snaps else '',
+        'snapshot': cur or (snaps[-1] if snaps else ''),
         'snapshots': snaps,
         'importers': importers,
         'outputs': rel_files(sorted(glob.glob(os.path.join(VF.OUT_DIR, '**', '*.xlsx'),
@@ -593,8 +648,43 @@ def api_upload_snapshot(form):
     paths = _save_upload(form, 'snapshot', subdir='')
     if not paths:
         return {'ok': False, 'log': '没有收到文件'}
-    return {'ok': True, 'log': '已保存快照: %s' % os.path.basename(paths[0]),
-            'path': paths[0]}
+    p = paths[0]
+    # 记为当前快照
+    os.makedirs(os.path.join(VF.BASE, 'data'), exist_ok=True)
+    with open(os.path.join(VF.BASE, 'data', '.current_snapshot'), 'w', encoding='utf-8') as f:
+        f.write(p)
+    log = ['已保存快照：%s' % os.path.basename(p)]
+    # 扫描快照，为每个进口商生成主数据（进口商/国家/经销商下拉从此有值）
+    try:
+        rows = VF.load_snapshot(p)
+        imps = sorted({r['imp'] for r in rows if r['imp']})
+        ok_imps = []
+        for imp in imps:
+            try:
+                VF.load_config(imp, rows)
+                ok_imps.append(imp)
+            except Exception as e:
+                log.append('  进口商 %s 主数据生成失败：%s' % (imp, e))
+        if ok_imps:
+            log.append('识别到 %d 个进口商：%s（已生成主数据，可在 config/countries/ 编辑）'
+                       % (len(ok_imps), ' / '.join(ok_imps)))
+        else:
+            log.append('⚠ 快照里没读到进口商编码，请确认是平台导出的车辆台账')
+    except Exception as e:
+        log.append('快照解析失败：%s' % e)
+        log.append('请确认上传的是平台导出的车辆台账（含 VIN / 进口商编码 / 末销时间 / 在途 等列）')
+        return {'ok': False, 'log': '\n'.join(log), 'path': p}
+    return {'ok': True, 'log': '\n'.join(log), 'path': p}
+
+
+def api_set_snapshot(b):
+    p = (b.get('path') or '').strip()
+    if p and os.path.exists(p) and inside_ws(p):
+        os.makedirs(os.path.join(VF.BASE, 'data'), exist_ok=True)
+        with open(os.path.join(VF.BASE, 'data', '.current_snapshot'), 'w', encoding='utf-8') as f:
+            f.write(p)
+        return {'ok': True, 'log': '当前快照已切换为：%s' % os.path.basename(p)}
+    return {'ok': False, 'log': '快照路径无效：%s' % p}
 
 
 def api_intake(form):
@@ -654,11 +744,24 @@ def api_sale_file(form):
 
 def api_dashboard(b):
     from argparse import Namespace
-    before = out_files()
     args = Namespace(snapshot=b.get('snapshot') or None, carflow=None,
                      month=(b.get('month') or '').strip() or None, out=None)
     ok, log = run_capture(DB.cmd_dashboard, args)
-    return {'ok': ok, 'log': log, 'files': rel_files(sorted(out_files() - before))}
+    files = []
+    if ok:
+        # 看板是覆盖写同名文件, 不能用「前后文件差集」(已存在时差集为空),
+        # 直接从日志取本次生成的路径, 拿不到再兜底取 out 下最新 html
+        m = re.search(r'看板已生成:\s*(.+)', log)
+        if m:
+            p = m.group(1).strip()
+            if os.path.exists(p):
+                files = [p]
+        if not files:
+            import glob
+            htmls = sorted(glob.glob(os.path.join(VF.OUT_DIR, '**', '*.html'),
+                                     recursive=True), key=os.path.getmtime, reverse=True)
+            files = htmls[:1]
+    return {'ok': ok, 'log': log, 'files': rel_files(files)}
 
 
 def api_check(b):
