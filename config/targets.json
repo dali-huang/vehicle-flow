@@ -1,5 +1,5 @@
 {
-  "window_months": 3,
+  "window_months": 6,
   "default": {
     "target_ratio": 2.0,
     "band": 0.3,

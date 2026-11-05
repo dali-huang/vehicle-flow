@@ -802,7 +802,7 @@ def cmd_sale(args):
     t = D.target_for(targets, cfg['country'])
     r_star = float(t.get('target_ratio', 2.0))
     band = float(t.get('band', 0.3))
-    n = int(targets.get('window_months', 3))
+    n = D.WINDOW_MONTHS
 
     # 统计月: 默认取该进口商末销数据的最新月
     mc = Counter()
@@ -852,10 +852,8 @@ def cmd_sale(args):
         want = int(args.count)
     elif args.source == 'carflow' and target_t:
         want = int(target_t)
-    elif s_star is not None:
-        want = s_star
     if not want or want <= 0:
-        sys.exit('请用 --count 报量，否则按系统建议量（当前为 0，请检查库存与月均是否正常）')
+        sys.exit('请填写报量台数（--count）')
     if want > feasible:
         print('  报量 %d 超出可执行上限, 已封顶为 %d 台' % (want, feasible))
         want = feasible
@@ -1176,7 +1174,7 @@ def main():
 
     q = sub.add_parser('sale', help='月度末销: 结合 carflow 目标给建议并出库')
     q.add_argument('--importer', required=True)
-    q.add_argument('--count', help='你报的台数(优先); 不报则按 --source 或系统建议')
+    q.add_argument('--count', help='你报的台数; 不报则按 --source carflow 当月目标')
     q.add_argument('--month', help='统计月, 如 2026-11, 默认取末销数据最新月')
     q.add_argument('--source', choices=['carflow'], help='按 carflow 当月末销目标')
     q.add_argument('--carflow', help='carflow 文件路径, 默认 data/inbox 下自动找')

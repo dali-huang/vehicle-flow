@@ -8,7 +8,7 @@
   月末销 = 平台「末销时间」口径
   在库   = 经销商已入库 + 进口商已入库, 且未末销
   在途   = 在途=是 且未末销
-  月均 A = 截至上月近 3 个完整月的末销均值; 无销量时回退 carflow 当月目标
+  月均 A = 截至上月近 6 个完整月（最近半年）的末销均值; 无销量时回退 carflow 当月目标
   存销比 = 库存 / A, 在库/在途/合计各算
 """
 import datetime as dt
@@ -25,6 +25,10 @@ from vehicle_flow import (BASE, INBOX, OUT_DIR, CONFIG_DIR, find_snapshot,
 
 DASH_DIR = os.path.join(OUT_DIR, 'dashboard')
 TARGETS_PATH = os.path.join(BASE, 'config', 'targets.json')
+
+# 月均 A 的计算窗口: 最近半年 (6 个完整月)。代码常量, 不读 targets.json,
+# 保证已安装用户的本地旧 config 不会覆盖此口径。
+WINDOW_MONTHS = 6
 
 ALIAS = {}  # 国家别名映射 (如快照里同一国家有多种写法时填这里)
 
@@ -60,7 +64,7 @@ def norm_country(name):
 
 
 def load_targets():
-    cfg = {'window_months': 3,
+    cfg = {'window_months': WINDOW_MONTHS,
            'default': {'target_ratio': 2.0, 'band': 0.3, 'min_keep_units': 1},
            'by_country': {}}
     if os.path.exists(TARGETS_PATH):
@@ -124,7 +128,7 @@ def build_data(snapshot, carflow_path, month, targets):
     cutoff = min(cutoff, dt.date.today())
 
     month = month or '%04d-%02d' % (cutoff.year, cutoff.month)
-    n = int(targets.get('window_months', 3))
+    n = WINDOW_MONTHS
     windows = [add_months(month, -i) for i in range(n, 0, -1)]
     trend_months = [add_months(month, -i) for i in range(11, -1, -1)]
     flow = load_carflow(carflow_path)
@@ -262,7 +266,7 @@ def build_data(snapshot, carflow_path, month, targets):
                       if dealers.get((c['code'], d['code']), {}).get('in_stock', 0) > 0]
         coverage = '%d/%d' % (len(with_stock), len(active)) if active else '—'
 
-        # 全期月均: 自首笔末销月至上月, 用于判断近 3 月是否被数据滞后压低
+        # 全期月均: 自首笔末销月至上月, 用于判断近 N 月是否被数据滞后压低
         past = sorted(m for m in c['months'] if m < month)
         long_sold = sum(c['months'][m] for m in past)
         avg_long = 0.0
@@ -309,8 +313,8 @@ def build_data(snapshot, carflow_path, month, targets):
             ls_month = '%04d-%02d' % (ls.year, ls.month)
             if ls_month < data_month[:7]:
                 warnings.append('%s 末销数据滞后：最新一笔 %s，%s 之后无末销记录；'
-                                '近 3 月分母被低估、存销比偏高' %
-                                (c['name'], c['last_sold'], ls_month))
+                                '近 %d 月分母被低估、存销比偏高' %
+                                (c['name'], c['last_sold'], ls_month, n))
             elif ls.day < 20 and ls_month >= windows[0]:
                 warnings.append('%s 末月（%s）末销仅到 %s，当月未完整；'
                                 '该月若在均值窗口内会拉低分母、抬高存销比' %

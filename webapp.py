@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 PORT = 8787
-VERSION = '1.5'
+VERSION = '1.6'
 
 
 def workspace_dir():
@@ -272,25 +272,23 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:0 0 26px}
 
   <section id="p-sale" class="card hidden">
     <h2>末销</h2>
-    <div class="sub">两种方式任选其一：按目标生成录入，或上传门店真实末销表识别出库。</div>
+    <div class="sub">两种方式任选其一：按数量生成录入，或上传门店真实末销表识别出库。</div>
 
     <label>进口商 / 国家</label>
     <select id="imp"></select>
 
     <label>方式</label>
     <div class="radios">
-      <label><input type="radio" name="smode" value="gen" checked onclick="syncSaleMode()"> 按目标生成</label>
+      <label><input type="radio" name="smode" value="gen" checked onclick="syncSaleMode()"> 按数量生成</label>
       <label><input type="radio" name="smode" value="real" onclick="syncSaleMode()"> 上传真实末销表识别</label>
     </div>
 
     <div id="sale-gen">
       <label>统计月</label>
       <select id="month"></select>
-      <label>末销量来源</label>
+      <label>末销台数</label>
       <div class="radios">
-        <label><input type="radio" name="mode" value="count" checked onclick="syncMode()">
-          我报量 <input type="text" id="count" style="width:80px;margin-left:4px"></label>
-        <label><input type="radio" name="mode" value="suggest" onclick="syncMode()"> 按系统建议量</label>
+        <label>我报量 <input type="text" id="count" style="width:80px;margin-left:4px" placeholder="台数"></label>
       </div>
       <div class="hint">超过可执行上限会自动封顶，不会清空任何门店；每店至少保留 1 台。<br>
         末销日期自动均匀铺到当月工作日（周末除外），避免日销峰谷。</div>
@@ -418,9 +416,8 @@ async function doIntake(preview){
   await post('/api/intake', fd, true);
 }
 async function doSale(preview){
-  const mode = document.querySelector('input[name=mode]:checked').value;
   await post('/api/sale', {importer:$('#imp').value, month:$('#month').value,
-    mode, count:$('#count').value, preview, snapshot:snapshotArg()});
+    count:$('#count').value, preview, snapshot:snapshotArg()});
 }
 async function doSaleFile(preview){
   const fd = new FormData();
@@ -484,7 +481,8 @@ function syncSaleMode(){
   $('#sale-real').classList.toggle('hidden', m !== 'real');
 }
 function syncMode(){
-  $('#count').disabled = document.querySelector('input[name=mode]:checked').value !== 'count';
+  const c = document.getElementById('count');
+  if(c) c.disabled = false;
 }
 
 document.querySelectorAll('nav button').forEach(b=>{
@@ -752,16 +750,14 @@ def api_intake(form):
 
 def api_sale(b):
     from argparse import Namespace
-    mode = b.get('mode') or 'count'
-    count = (b.get('count') or '').strip() if mode == 'count' else None
-    if mode == 'count' and not count:
-        return {'ok': False, 'log': '请填写报量台数，或改选系统建议量', 'files': []}
+    count = (b.get('count') or '').strip()
+    if not count:
+        return {'ok': False, 'log': '请填写报量台数', 'files': []}
     before = out_files()
     args = Namespace(snapshot=b.get('snapshot') or None,
                      importer=b.get('importer'),
                      count=count, month=(b.get('month') or '').strip() or None,
-                     source='carflow' if mode == 'carflow' else None,
-                     carflow=None, date=None, tag=None, out=None,
+                     source=None, carflow=None, date=None, tag=None, out=None,
                      preview=bool(b.get('preview')))
     ok, log = run_capture(VF.cmd_sale, args)
     return {'ok': ok, 'log': log, 'files': rel_files(sorted(out_files() - before))}
