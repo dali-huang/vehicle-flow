@@ -76,9 +76,13 @@ LAST_PING = [time.time()]
 # ---------------------------------------------------------------- 工具
 
 def inside_ws(path):
-    """只允许访问工作目录内的文件。"""
-    p = os.path.abspath(path)
-    return p.startswith(WS + os.sep) and os.path.isfile(p)
+    """只允许访问工作目录内的文件（Windows 下路径大小写不敏感）。"""
+    try:
+        p = os.path.normcase(os.path.abspath(path))
+        ws = os.path.normcase(os.path.abspath(WS)) + os.sep
+        return p.startswith(ws) and os.path.isfile(p)
+    except (TypeError, ValueError):
+        return False
 
 
 def rel_files(files):
@@ -423,7 +427,8 @@ async function doDash(){
     }).join('');
     box.classList.remove('hidden');
   } else {
-    box.classList.add('hidden');
+    links.innerHTML = '<span style="color:#b91c1c;font-size:13px">看板已生成，但未获取到打开链接。请把运行日志末尾「看板诊断」那一行发给开发者定位。</span>';
+    box.classList.remove('hidden');
   }
 }
 async function doCheck(){
@@ -757,12 +762,15 @@ def api_dashboard(b):
                      month=(b.get('month') or '').strip() or None, out=None)
     ok, log = run_capture(DB.cmd_dashboard, args)
     files = []
+    diag = []
     if ok:
         # 看板是覆盖写同名文件, 不能用「前后文件差集」(已存在时差集为空),
         # 直接从日志取本次生成的路径, 拿不到再兜底取 out 下最新 html
         m = re.search(r'看板已生成:\s*(.+)', log)
         if m:
             p = m.group(1).strip()
+            diag.append('匹配路径=%r exists=%s inside_ws=%s'
+                        % (p, os.path.exists(p), inside_ws(p)))
             if os.path.exists(p):
                 files = [p]
         if not files:
@@ -770,7 +778,12 @@ def api_dashboard(b):
             htmls = sorted(glob.glob(os.path.join(VF.OUT_DIR, '**', '*.html'),
                                      recursive=True), key=os.path.getmtime, reverse=True)
             files = htmls[:1]
-    return {'ok': ok, 'log': log, 'files': rel_files(files)}
+            diag.append('兜底glob=%r' % files)
+    result = rel_files(files)
+    diag.append('WS=%r' % WS)
+    diag.append('rel_files=%d个' % len(result))
+    log = log + '\n[看板诊断] ' + ' | '.join(diag)
+    return {'ok': ok, 'log': log, 'files': result}
 
 
 def api_check(b):
