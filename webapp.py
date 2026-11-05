@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 PORT = 8787
+VERSION = '1.5'
 
 
 def workspace_dir():
@@ -75,12 +76,34 @@ LAST_PING = [time.time()]
 
 # ---------------------------------------------------------------- 工具
 
-def inside_ws(path):
-    """只允许访问工作目录内的文件（Windows 下路径大小写不敏感）。"""
+def _norm_path(p):
+    """归一化路径: 解析符号链接/联接点 + (Windows) 短名转长名 + 大小写折叠。
+    任何一步失败都回退到上一步的结果，绝不抛异常。"""
     try:
-        p = os.path.normcase(os.path.abspath(path))
-        ws = os.path.normcase(os.path.abspath(WS)) + os.sep
-        return p.startswith(ws) and os.path.isfile(p)
+        p = os.path.realpath(os.path.abspath(p))
+    except (OSError, ValueError):
+        p = os.path.abspath(p)
+    if os.name == 'nt':
+        try:
+            import ctypes
+            from ctypes import wintypes
+            GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW
+            GetLongPathNameW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+            GetLongPathNameW.restype = wintypes.DWORD
+            buf = ctypes.create_unicode_buffer(1024)
+            if GetLongPathNameW(p, buf, 1024):
+                p = buf.value
+        except Exception:
+            pass
+    return os.path.normcase(p)
+
+
+def inside_ws(path):
+    """只允许访问工作目录内的文件（兼容 Windows 大小写/短名/联接点/OneDrive）。"""
+    try:
+        p = _norm_path(path)
+        ws = _norm_path(WS)
+        return (p == ws or p.startswith(ws + os.sep)) and os.path.isfile(path)
     except (TypeError, ValueError):
         return False
 
@@ -345,7 +368,7 @@ async function loadState(){
   $('#imp').innerHTML = r.importers.map(i=>`<option value="${i.code}">${i.code}　${i.name}</option>`).join('');
   $('#inimp').innerHTML = r.importers.map(i=>`<option value="${i.code}">${i.code}　${i.name}</option>`).join('');
   $('#chkfile').innerHTML = r.outputs.map(o=>`<option value="${o.path}">${o.rel}</option>`).join('');
-  $('#ws').textContent = '工作目录：' + r.ws;
+  $('#ws').textContent = '工作目录：' + r.ws + '　·　v' + (r.version || '?');
   const today = new Date().toISOString().slice(0,10);
   if(!$('#indate').value) $('#indate').value = today;
 }
@@ -608,6 +631,7 @@ def state():
             code = os.path.basename(p)[:-5]
             importers.append({'code': code, 'name': code})
     return {
+        'version': VERSION,
         'ws': WS,
         'snapshot': cur or (snaps[-1] if snaps else ''),
         'snapshots': snaps,
