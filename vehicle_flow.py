@@ -786,10 +786,7 @@ def cmd_intake(args):
 
 
 def cmd_sale(args):
-    """月度末销: 结合 carflow 目标与存销比给建议量, 再分店 FIFO 出库。
-
-    三数对比: carflow 目标 T / 系统建议 S* = Q0 + I - r* × A / 你报的量 U
-    """
+    """月度末销: 按你报的台数分店 FIFO 出库 (CLI 可用 --source carflow 取当月目标)。"""
     import dashboard as D                      # 局部导入避免循环
     snapshot = find_snapshot(args.snapshot)
     rows = load_snapshot(snapshot)
@@ -828,22 +825,17 @@ def cmd_sale(args):
             stock[r['dealer']].append(r)
     feasible = sum(len(v) for v in stock.values()) - floor * len(stock)
 
-    # carflow 当月目标
+    # carflow 当月目标 (仅 CLI --source carflow 时用作报量; 不再展示「系统建议」以免误当真)
     flow = D.load_carflow(args.carflow or os.path.join(INBOX, '月度末销目标.xlsx'))
     target_t = flow.get(D.norm_country(cfg['country']), {}).get(month, 0)
 
-    # 建议量 S* = Q0 + I - r* × A
-    s_star = max(0, round(in_stock + in_transit - r_star * avg)) if avg else None
-
     print('进口商 %s | %s | 统计月 %s' % (args.importer, cfg['country'], month))
-    print('  库存: 在库 %d + 在途 %d | 月均 A=%.1f（窗口 %s）| 目标存销比 %.1f±%.1f'
-          % (in_stock, in_transit, avg, '/'.join(windows), r_star, band))
+    print('  库存: 在库 %d + 在途 %d | 月均 A=%.1f（窗口 %s）| 目标存销比 %.1f±%.1f | 可执行上限 %d'
+          % (in_stock, in_transit, avg, '/'.join(windows), r_star, band, max(0, feasible)))
     zero_m = [m for m in used if mc[m] == 0]
     if zero_m and avg:
-        print('  注意: 窗口内 %s 末销为 0（疑导出延迟），A 被低估、建议量与推演仅供参考'
+        print('  注意: 窗口内 %s 末销为 0（疑导出延迟），A 被低估、存销比推演仅供参考'
               % '、'.join(zero_m))
-    print('  三数: carflow 目标 %s | 系统建议 %s | 可执行上限 %d'
-          % (target_t or '无', s_star if s_star is not None else '—', max(0, feasible)))
     if not feasible or feasible <= 0:
         sys.exit('没有可末销的在库车辆（每店需保留 %d 台）' % floor)
 

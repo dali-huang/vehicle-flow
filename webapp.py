@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 PORT = 8787
-VERSION = '1.6'
+VERSION = '1.7'
 
 
 def workspace_dir():
